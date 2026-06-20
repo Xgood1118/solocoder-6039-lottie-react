@@ -66,6 +66,16 @@ export type Versions = {
 
 export type PlayerDirection = -1 | 1;
 
+export interface Bookmark {
+  id: string;
+  name: string;
+  note?: string;
+  frame: number;
+  createdAt: number;
+}
+
+export type ControlsPosition = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
+
 export interface IPlayerProps {
   id?: string;
   lottieRef?: (ref: AnimationItem) => void;
@@ -86,6 +96,9 @@ export interface IPlayerProps {
   rendererSettings?: object;
   keepLastFrame?: boolean;
   className?: string;
+  onBookmarkAdd?: (bookmark: Bookmark) => void;
+  onBookmarkDelete?: (bookmarkId: string) => void;
+  onBookmarksChange?: (bookmarks: Bookmark[]) => void;
 }
 
 interface IPlayerState {
@@ -96,7 +109,11 @@ interface IPlayerState {
   instance: AnimationItem | null;
   seeker: number;
   playerState: PlayerState;
+  bookmarks: Bookmark[];
+  controlsPosition: ControlsPosition;
 }
+
+
 
 // Build default config for lottie-web player
 const defaultOptions = {
@@ -131,6 +148,8 @@ export class Player extends React.Component<IPlayerProps, IPlayerState> {
       instance: null,
       playerState: PlayerState.Loading,
       seeker: 0,
+      bookmarks: [],
+      controlsPosition: 'bottom-right',
     };
   }
 
@@ -220,12 +239,245 @@ export class Player extends React.Component<IPlayerProps, IPlayerState> {
     return data;
   };
 
+  private getSrcKey(): string {
+    const { src } = this.props;
+    if (typeof src === 'string') {
+      return src;
+    }
+    try {
+      return JSON.stringify(src).substring(0, 100);
+    } catch {
+      return 'default';
+    }
+  }
+
+  private loadBookmarksFromStorage(): Bookmark[] {
+    try {
+      const key = `lottie-bookmarks-${this.getSrcKey()}`;
+      const stored = localStorage.getItem(key);
+      if (stored) {
+        return JSON.parse(stored);
+      }
+    } catch {
+      // Ignore storage errors
+    }
+    return [];
+  }
+
+  private saveBookmarksToStorage(bookmarks: Bookmark[]): void {
+    try {
+      const key = `lottie-bookmarks-${this.getSrcKey()}`;
+      localStorage.setItem(key, JSON.stringify(bookmarks));
+    } catch {
+      // Ignore storage errors
+    }
+  }
+
+  private loadControlsPositionFromStorage(): ControlsPosition {
+    try {
+      const key = `lottie-controls-position-${this.getSrcKey()}`;
+      const stored = localStorage.getItem(key);
+      if (stored && ['top-left', 'top-right', 'bottom-left', 'bottom-right'].includes(stored)) {
+        return stored as ControlsPosition;
+      }
+    } catch {
+      // Ignore storage errors
+    }
+    return 'bottom-right';
+  }
+
+  private saveControlsPositionToStorage(position: ControlsPosition): void {
+    try {
+      const key = `lottie-controls-position-${this.getSrcKey()}`;
+      localStorage.setItem(key, position);
+    } catch {
+      // Ignore storage errors
+    }
+  }
+
+  private mergeBookmarks(animationData: any): Bookmark[] {
+    const jsonBookmarks: Bookmark[] = (animationData && animationData.__bookmarks) || [];
+    const localBookmarks = this.loadBookmarksFromStorage();
+
+    const mergedMap = new Map<string, Bookmark>();
+
+    jsonBookmarks.forEach(b => {
+      mergedMap.set(b.id, b);
+    });
+
+    localBookmarks.forEach(b => {
+      mergedMap.set(b.id, b);
+    });
+
+    const merged = Array.from(mergedMap.values());
+    merged.sort((a, b) => {
+      if (a.name === b.name) {
+        return a.createdAt - b.createdAt;
+      }
+      return a.name.localeCompare(b.name);
+    });
+
+    return merged;
+  }
+
+  addBookmark = (name: string, note?: string): Bookmark => {
+    const { instance } = this.state;
+    const frame = instance ? Math.floor(instance.currentFrame) : 0;
+    const bookmark: Bookmark = {
+      id: `bookmark-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      name,
+      note,
+      frame,
+      createdAt: Date.now(),
+    };
+
+    const newBookmarks = [...this.state.bookmarks, bookmark].sort((a, b) => {
+      if (a.name === b.name) {
+        return a.createdAt - b.createdAt;
+      }
+      return a.name.localeCompare(b.name);
+    });
+
+    this.setState({ bookmarks: newBookmarks });
+    this.saveBookmarksToStorage(newBookmarks);
+
+    if (this.state.animationData) {
+      this.state.animationData.__bookmarks = newBookmarks;
+    }
+
+    if (typeof this.props.onBookmarkAdd === 'function') {
+      this.props.onBookmarkAdd(bookmark);
+    }
+    if (typeof this.props.onBookmarksChange === 'function') {
+      this.props.onBookmarksChange(newBookmarks);
+    }
+
+    return bookmark;
+  };
+
+  deleteBookmark = (bookmarkId: string): void => {
+    const newBookmarks = this.state.bookmarks.filter(b => b.id !== bookmarkId);
+    this.setState({ bookmarks: newBookmarks });
+    this.saveBookmarksToStorage(newBookmarks);
+
+    if (this.state.animationData) {
+      this.state.animationData.__bookmarks = newBookmarks;
+    }
+
+    if (typeof this.props.onBookmarkDelete === 'function') {
+      this.props.onBookmarkDelete(bookmarkId);
+    }
+    if (typeof this.props.onBookmarksChange === 'function') {
+      this.props.onBookmarksChange(newBookmarks);
+    }
+  };
+
+  seekToBookmark = (bookmarkId: string): void => {
+    const bookmark = this.state.bookmarks.find(b => b.id === bookmarkId);
+    if (bookmark && this.state.instance) {
+      this.setSeeker(bookmark.frame, this.state.playerState === PlayerState.Playing);
+    }
+  };
+
+  setControlsPosition = (position: ControlsPosition): void => {
+    this.setState({ controlsPosition: position });
+    this.saveControlsPositionToStorage(position);
+  };
+
+  getAnimationName = (): string => {
+    const { src } = this.props;
+    if (typeof src === 'string') {
+      const parts = src.split('/');
+      const filename = parts[parts.length - 1];
+      return filename.replace(/\.[^/.]+$/, '') || 'animation';
+    }
+    return 'animation';
+  };
+
+  exportCurrentFrameAsPNG = (): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      if (!this.state.instance || !this.props.src) {
+        reject(new Error('No animation source loaded'));
+        return;
+      }
+
+      const id = this.props.id ? this.props.id : 'lottie';
+      const lottieElement = document.getElementById(id);
+      const currentFrame = this.state.instance ? Math.floor(this.state.instance.currentFrame) : 0;
+      const animationName = this.getAnimationName();
+      const filename = `${animationName}-frame-${currentFrame}.png`;
+
+      try {
+        if (this.props.renderer === 'svg') {
+          if (lottieElement) {
+            const svgElement = lottieElement.querySelector('svg');
+            if (svgElement) {
+              const svgData = new XMLSerializer().serializeToString(svgElement);
+              const canvas = document.createElement('canvas');
+              const ctx = canvas.getContext('2d');
+              const img = new Image();
+
+              const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+              const url = URL.createObjectURL(svgBlob);
+
+              img.onload = () => {
+                canvas.width = svgElement.clientWidth || svgElement.viewBox.baseVal.width || 512;
+                canvas.height = svgElement.clientHeight || svgElement.viewBox.baseVal.height || 512;
+                if (ctx) {
+                  ctx.drawImage(img, 0, 0);
+                  try {
+                    const dataUrl = canvas.toDataURL('image/png');
+                    this.triggerDownload(dataUrl, filename);
+                    URL.revokeObjectURL(url);
+                    resolve(dataUrl);
+                  } catch (e) {
+                    URL.revokeObjectURL(url);
+                    reject(new Error('CORS or security error: Cannot export canvas data'));
+                  }
+                } else {
+                  URL.revokeObjectURL(url);
+                  reject(new Error('Cannot get canvas context'));
+                }
+              };
+
+              img.onerror = () => {
+                URL.revokeObjectURL(url);
+                reject(new Error('Failed to load SVG image for export'));
+              };
+
+              img.src = url;
+              return;
+            }
+          }
+          reject(new Error('SVG element not found'));
+        } else {
+          if (lottieElement) {
+            const canvas = lottieElement.querySelector('canvas');
+            if (canvas) {
+              try {
+                const dataUrl = canvas.toDataURL('image/png');
+                this.triggerDownload(dataUrl, filename);
+                resolve(dataUrl);
+              } catch (e) {
+                reject(new Error('CORS or security error: Cannot export canvas data'));
+              }
+              return;
+            }
+          }
+          reject(new Error('Canvas element not found'));
+        }
+      } catch (e) {
+        reject(e instanceof Error ? e : new Error('Export failed'));
+      }
+    });
+  };
+
   public render() {
     const { children, loop, style, onBackgroundChange, className } = this.props;
-    const { animationData, instance, playerState, seeker, debug, background } = this.state;
+    const { animationData, instance, playerState, seeker, debug, background, bookmarks, controlsPosition } = this.state;
 
     return (
-      <div className="lf-player-container">
+      <div className="lf-player-container" style={{ position: 'relative' }}>
         {this.state.playerState === PlayerState.Error ? (
           <div className="lf-error">
             <span aria-label="error-symbol" role="img">
@@ -275,6 +527,13 @@ export class Player extends React.Component<IPlayerProps, IPlayerState> {
               snapshot: () => {
                 this.snapshot();
               },
+              bookmarks,
+              addBookmark: this.addBookmark,
+              deleteBookmark: this.deleteBookmark,
+              seekToBookmark: this.seekToBookmark,
+              controlsPosition,
+              setControlsPosition: this.setControlsPosition,
+              exportCurrentFrameAsPNG: this.exportCurrentFrameAsPNG,
             });
           }
           return null;
@@ -324,6 +583,13 @@ export class Player extends React.Component<IPlayerProps, IPlayerState> {
           throw new Error('@LottieFiles/lottie-react: Animation data could not be fetched.');
         });
       }
+
+      const mergedBookmarks = this.mergeBookmarks(animationData);
+      (animationData as any).__bookmarks = mergedBookmarks;
+
+      const savedPosition = this.loadControlsPositionFromStorage();
+
+      this.setState({ bookmarks: mergedBookmarks, controlsPosition: savedPosition });
 
       // Clear previous animation, if any
       if (instance) {

@@ -231,3 +231,158 @@
 .lf-player-controls > div:last-child {
   margin-right: 0px;
 }
+
+.lf-floating-controls {
+  position: absolute;
+  transition: all 0.2s ease-out;
+}
+
+.lf-floating-controls:active {
+  cursor: grabbing;
+}
+
+.lf-controls-drag-handle {
+  touch-action: none;
+}
+
+.lf-bookmarks-panel {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  width: 220px;
+  max-height: 300px;
+  overflow-y: auto;
+  background-color: rgba(255, 255, 255, 0.95);
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+  z-index: 5;
+  font-size: 0.8rem;
+}
+
+.lf-bookmarks-header {
+  padding: 8px 12px;
+  background-color: #0FCCCE;
+  color: white;
+  font-weight: bold;
+  border-radius: 8px 8px 0 0;
+}
+
+.lf-bookmarks-list {
+  padding: 4px;
+}
+
+.lf-bookmark-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 8px;
+  margin: 2px 0;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.lf-bookmark-item:hover {
+  background-color: rgba(15, 204, 206, 0.1);
+}
+
+.lf-bookmark-item.active {
+  background-color: rgba(15, 204, 206, 0.2);
+  border-left: 3px solid #0FCCCE;
+}
+
+.lf-bookmark-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.lf-bookmark-name {
+  display: block;
+  font-weight: 600;
+  color: #333;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lf-bookmark-frame {
+  display: block;
+  font-size: 0.7rem;
+  color: #888;
+}
+
+.lf-bookmark-note {
+  display: block;
+  font-size: 0.7rem;
+  color: #666;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lf-bookmark-delete {
+  background: none;
+  border: none;
+  color: #e74c3c;
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 0 4px;
+  opacity: 0;
+  transition: opacity 0.15s;
+  line-height: 1;
+}
+
+.lf-bookmark-item:hover .lf-bookmark-delete {
+  opacity: 1;
+}
+
+.lf-bookmark-delete:hover {
+  opacity: 1 !important;
+  transform: scale(1.2);
+}
+
+.lf-popover-bookmarks {
+  min-width: 200px;
+}
+
+.lf-add-bookmark-form h5 {
+  margin: 0 0 10px 0;
+  font-size: 0.85rem;
+  color: #333;
+}
+
+.lf-bookmarks-mini-list {
+  max-height: 150px;
+  overflow-y: auto;
+  border-top: 1px solid #eee;
+  padding-top: 8px;
+}
+
+.lf-bookmark-mini-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 6px;
+  margin: 2px 0;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 0.75rem;
+}
+
+.lf-bookmark-mini-item:hover {
+  background-color: rgba(15, 204, 206, 0.1);
+}
+
+.lf-bookmark-frame-mini {
+  color: #999;
+  font-size: 0.65rem;
+}
+
+.lf-export-error {
+  word-break: break-word;
+}
+
+.lf-controls-drag-handle:hover {
+  color: #0FCCCE !important;
+}
