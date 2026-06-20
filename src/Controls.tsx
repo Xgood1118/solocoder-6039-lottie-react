@@ -49,7 +49,8 @@ interface IControlsState {
   newBookmarkName: string;
   newBookmarkNote: string;
   isDragging: boolean;
-  dragOffset: { x: number; y: number };
+  dragLeft: number;
+  dragTop: number;
   exportError: string | null;
   exportLoading: boolean;
 }
@@ -57,16 +58,20 @@ interface IControlsState {
 export class Controls extends React.Component<IControlProps, IControlsState> {
   private controlsRef: React.RefObject<HTMLDivElement>;
   private containerRef: React.RefObject<HTMLDivElement>;
-  private dragStartPos: { x: number; y: number };
-  private initialPosition: { x: number; y: number };
+  private dragMouseOffset: { x: number; y: number };
+  private containerStartRect: DOMRect | null;
+  private dragStartLeft: number;
+  private dragStartTop: number;
 
   public constructor(props: IControlProps) {
     super(props);
 
     this.controlsRef = React.createRef();
     this.containerRef = React.createRef();
-    this.dragStartPos = { x: 0, y: 0 };
-    this.initialPosition = { x: 0, y: 0 };
+    this.dragMouseOffset = { x: 0, y: 0 };
+    this.containerStartRect = null;
+    this.dragStartLeft = 0;
+    this.dragStartTop = 0;
 
     this.state = {
       activeFrame: 0,
@@ -75,10 +80,23 @@ export class Controls extends React.Component<IControlProps, IControlsState> {
       newBookmarkName: '',
       newBookmarkNote: '',
       isDragging: false,
-      dragOffset: { x: 0, y: 0 },
+      dragLeft: 0,
+      dragTop: 0,
       exportError: null,
       exportLoading: false,
     };
+  }
+
+  public componentWillUnmount() {
+    document.removeEventListener('mousemove', this.handleDragMove);
+    document.removeEventListener('mouseup', this.handleDragEnd);
+  }
+
+  private getParentContainerRect(): DOMRect | null {
+    if (this.containerRef.current && this.containerRef.current.parentElement) {
+      return this.containerRef.current.parentElement.getBoundingClientRect();
+    }
+    return null;
   }
 
   private getPositionStyle(): React.CSSProperties {
@@ -92,8 +110,10 @@ export class Controls extends React.Component<IControlProps, IControlsState> {
     if (this.state.isDragging) {
       return {
         ...baseStyle,
-        left: this.initialPosition.x + this.state.dragOffset.x,
-        top: this.initialPosition.y + this.state.dragOffset.y,
+        left: this.state.dragLeft,
+        top: this.state.dragTop,
+        right: 'auto',
+        bottom: 'auto',
         cursor: 'grabbing',
         userSelect: 'none',
       };
@@ -116,26 +136,41 @@ export class Controls extends React.Component<IControlProps, IControlsState> {
     e.preventDefault();
     e.stopPropagation();
 
-    if (this.controlsRef.current) {
-      const rect = this.controlsRef.current.getBoundingClientRect();
-      this.initialPosition = { x: rect.left, y: rect.top };
-      this.dragStartPos = { x: e.clientX, y: e.clientY };
-    }
+    if (!this.controlsRef.current) return;
 
-    this.setState({ isDragging: true, dragOffset: { x: 0, y: 0 } });
+    const controlsRect = this.controlsRef.current.getBoundingClientRect();
+    const parentRect = this.getParentContainerRect();
+
+    if (!parentRect) return;
+
+    this.dragMouseOffset = {
+      x: e.clientX - controlsRect.left,
+      y: e.clientY - controlsRect.top,
+    };
+
+    this.dragStartLeft = controlsRect.left - parentRect.left;
+    this.dragStartTop = controlsRect.top - parentRect.top;
+    this.containerStartRect = parentRect;
+
+    this.setState({
+      isDragging: true,
+      dragLeft: this.dragStartLeft,
+      dragTop: this.dragStartTop,
+    });
 
     document.addEventListener('mousemove', this.handleDragMove);
     document.addEventListener('mouseup', this.handleDragEnd);
   };
 
   private handleDragMove = (e: MouseEvent) => {
-    if (!this.state.isDragging) return;
+    if (!this.state.isDragging || !this.containerStartRect) return;
 
-    const deltaX = e.clientX - this.dragStartPos.x;
-    const deltaY = e.clientY - this.dragStartPos.y;
+    const newLeft = e.clientX - this.containerStartRect.left - this.dragMouseOffset.x;
+    const newTop = e.clientY - this.containerStartRect.top - this.dragMouseOffset.y;
 
     this.setState({
-      dragOffset: { x: deltaX, y: deltaY },
+      dragLeft: newLeft,
+      dragTop: newTop,
     });
   };
 
@@ -143,35 +178,32 @@ export class Controls extends React.Component<IControlProps, IControlsState> {
     document.removeEventListener('mousemove', this.handleDragMove);
     document.removeEventListener('mouseup', this.handleDragEnd);
 
-    if (!this.state.isDragging || !this.controlsRef.current || !this.containerRef.current) {
+    if (!this.state.isDragging || !this.controlsRef.current) {
       this.setState({ isDragging: false });
       return;
     }
 
-    const containerRect = this.containerRef.current.parentElement?.getBoundingClientRect();
+    const parentRect = this.getParentContainerRect();
     const controlsRect = this.controlsRef.current.getBoundingClientRect();
 
-    if (!containerRect) {
+    if (!parentRect) {
       this.setState({ isDragging: false });
       return;
     }
 
-    const finalX = this.initialPosition.x + this.state.dragOffset.x;
-    const finalY = this.initialPosition.y + this.state.dragOffset.y;
+    const finalCenterX = controlsRect.left + controlsRect.width / 2 - parentRect.left;
+    const finalCenterY = controlsRect.top + controlsRect.height / 2 - parentRect.top;
 
-    const centerX = finalX + controlsRect.width / 2;
-    const centerY = finalY + controlsRect.height / 2;
-
-    const containerCenterX = containerRect.left + containerRect.width / 2;
-    const containerCenterY = containerRect.top + containerRect.height / 2;
+    const containerCenterX = parentRect.width / 2;
+    const containerCenterY = parentRect.height / 2;
 
     let newPosition: ControlsPosition;
 
-    if (centerX < containerCenterX && centerY < containerCenterY) {
+    if (finalCenterX < containerCenterX && finalCenterY < containerCenterY) {
       newPosition = 'top-left';
-    } else if (centerX >= containerCenterX && centerY < containerCenterY) {
+    } else if (finalCenterX >= containerCenterX && finalCenterY < containerCenterY) {
       newPosition = 'top-right';
-    } else if (centerX < containerCenterX && centerY >= containerCenterY) {
+    } else if (finalCenterX < containerCenterX && finalCenterY >= containerCenterY) {
       newPosition = 'bottom-left';
     } else {
       newPosition = 'bottom-right';
@@ -181,7 +213,8 @@ export class Controls extends React.Component<IControlProps, IControlsState> {
       this.props.setControlsPosition(newPosition);
     }
 
-    this.setState({ isDragging: false, dragOffset: { x: 0, y: 0 } });
+    this.containerStartRect = null;
+    this.setState({ isDragging: false, dragLeft: 0, dragTop: 0 });
   };
 
   private handleAddBookmark = () => {
